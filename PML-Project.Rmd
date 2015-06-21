@@ -1,0 +1,153 @@
+---
+title: "MachineLearning"
+author: "M. Alfonso López"
+date: "Friday, June 19, 2015"
+output: pdf_document
+---
+
+# Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+# Loading data:
+
+```{r, echo=FALSE}
+
+load("datos.RData")
+
+```
+
+```{r, echo=TRUE, eval=FALSE}
+
+urlTr="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(urlTr,destfile="training.csv")
+urlTest="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(urlTest,destfile="testing.csv")
+
+```
+
+# Reading data
+
+```{r, echo=TRUE}
+
+trainingData<-read.csv('training.csv',na.strings=c("#DIV/0!"))
+testData<-read.csv('testing.csv',na.strings=c("#DIV/0!"))
+
+```
+
+The training data has 19622 observations and 160 features, while the test data has 20 observations and the same number of features:
+
+```{r, echo=TRUE}
+
+dim(trainingData)
+dim(testData)
+
+```
+# Data Preprocessing
+
+```{r, echo=TRUE}
+
+library(caret)
+
+featureSet <- colnames(trainingData[colSums(is.na(trainingData)) == 0])[-(1:7)]
+data <- trainingData[featureSet]
+
+nzv <- nearZeroVar(data) #Identification of near zero variance predictors
+data <- data[,-nzv]
+
+```
+
+# Data splitting
+
+We are going to split the data in a 80% training set and a 20% validation set.
+
+```{r, echo=TRUE}
+
+set.seed(7484479) #For reproduciblitity
+intrain <- createDataPartition(data$classe, p = 0.8, list = FALSE)
+training <- data[intrain, ]
+validation <- data[-intrain, ]
+
+```
+
+# Data Modeling
+
+We are going to use a predictive model for activity recognition based on the construction of a tree.
+
+```{r, echo=TRUE, eval=FALSE}
+
+library(rpart)
+
+modelRf <- train(classe ~ ., data=training,method="rpart")
+
+
+```
+
+Now we predict this modeling on validation data set
+
+```{r, echo=TRUE}
+
+library(rattle)
+library(gbm)
+
+modelRf
+predictRf <- predict(modelRf, validation)
+confusionMatrix(validation$classe, predictRf)
+fancyRpartPlot(modelRf$finalModel)
+accuracy <- postResample(predictRf, validation$classe)
+error <- 1 - as.numeric(confusionMatrix(validation$classe, predictRf)$overall[1])
+accuracy
+error
+
+```
+
+As we see, the accuracy is 0.48 which is clearly low, and the error 0.51. 
+
+On the other hand, we are going to create a new modeling by using boosting with trees. It is expected to get a greater accuracy, because the algorithm weights possibly weak predictors in order to get stronger ones.
+
+```{r, echo=TRUE, eval=FALSE}
+
+modelRf2 <- train(classe ~ ., data=training, method="gbm", verbose=FALSE)
+
+
+```
+
+```{r, echo=TRUE}
+
+modelRf2
+predictRf2 <- predict(modelRf2, validation)
+confusionMatrix(validation$classe, predictRf2)
+accuracy2 <- postResample(predictRf2, validation$classe)
+error2 <- 1 - as.numeric(confusionMatrix(validation$classe, predictRf2)$overall[1])
+accuracy2
+error2
+
+```
+
+In this case, the accuracy is 0,95 and the error only 0,04. 
+
+# Conclusions
+
+The confusion matrix of the second model shows a very accurate model due to the very low accuracy. 
+
+# Test Data
+
+```{r, echo=TRUE}
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+x <- testData
+x <- x[featureSet[featureSet!='classe']]
+answers <- predict(modelRf2, newdata=x)
+
+answers
+
+pml_write_files(answers)
+
+```
